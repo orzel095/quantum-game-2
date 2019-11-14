@@ -41,10 +41,22 @@ export default class GameControls extends Vue {
   @Prop() readonly frameIndex!: number;
   @Prop() readonly totalFrames!: number;
   @State('gameState') gameState!: string;
+  @State('simulationState') simulationState!: boolean;
   // PLAY BUTTON SHOULD CHANGE TO PAUSE WHEN THE PHOTON IS MOVING
   playBackControls = ['step-back', 'play', 'step-forward'];
   // ADD VIEW CONTROLS WHEN MULTIVERSE MODE IS ADDED
   viewControls = [];
+
+  @Watch('simulationState')
+  togglePlayPause(newState: boolean) {
+    if (newState) {
+      const index = this.playBackControls.indexOf('play');
+      this.playBackControls.splice(index, 1, 'pause');
+    } else {
+      const index = this.playBackControls.indexOf('pause');
+      this.playBackControls.splice(index, 1, 'play');
+    }
+  }
 }
 </script>
 

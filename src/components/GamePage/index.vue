@@ -58,6 +58,7 @@
           @step-back="showPrevious"
           @step-forward="showNext"
           @play="play"
+          @pause="pause"
         />
         <!-- <game-multiverse-horizontal
           :multiverse="multiverseGraph"
@@ -142,6 +143,7 @@ export default class Game extends Vue {
   error: string = '';
   playInterval: number = 0;
   absorptionThreshold: number = 0.0001;
+  isSimulationRunning: boolean = false;
 
   // LIFECYCLE
   created() {
@@ -189,7 +191,72 @@ export default class Game extends Vue {
     this.frameIndex = 0;
     this.level.grid.resetEnergized();
     this.mutationSetSimulationState(false);
+    this.isSimulationRunning=false;
+    this.computeGameState();
   }
+
+  computeGameState() {
+    let probabilityFlag = false;
+    let goalFlag = false;
+    let safeFlag = false;
+    // Compute the current detection probability and compare it to goals
+    if (this.percentage >= this.totalGoalPercentage) {
+      probabilityFlag = true;
+    }
+    // Check that the current goals are met
+    if (this.detectorsUnhit === 0) {
+      goalFlag = true;
+    }
+    // Check that no mines are hit so it's safe
+    if (this.minesHit === 0) {
+      safeFlag = true;
+    }
+
+    if (!safeFlag) {
+      this.$store.commit('SET_GAME_STATE', GameState.MineExploded);
+      this.$emit('gameState', GameState.MineExploded);
+      return;
+    }
+    if ((!goalFlag && probabilityFlag) || (goalFlag && !probabilityFlag) || (!goalFlag && !probabilityFlag)) {
+      this.$store.commit('SET_GAME_STATE', GameState.InProgress);
+      this.$emit('gameState', GameState.InProgress);
+    }
+    if (probabilityFlag && goalFlag && safeFlag) {
+      this.$store.commit('SET_GAME_STATE', GameState.Victory);
+      this.$emit('gameState', GameState.Victory);
+    }
+  }
+
+   get totalGoalPercentage() {
+    let sum = 0;
+    this.level.goals.forEach((goal: Goal) => {
+      sum += goal.threshold;
+    });
+    return sum * 100;
+  }
+
+  get minesUnhit(): number {
+    return this.mineCount - this.minesHit;
+  }
+
+  get minesHit(): number {
+    const minesDetected = this.detections.filter((detection) => {
+      return detection.cell.element.name === 'Mine' && detection.probability > 0.001;
+    });
+    return minesDetected.length;
+  }
+
+    get detectorsUnhit(): number {
+    return this.level.goals.length - this.detectorsHit;
+  }
+
+    get detectorsHit(): number {
+    const detectorDetected = this.detections.filter((detection) => {
+      return detection.cell.isDetector;
+    });
+    return detectorDetected.length;
+  }
+
 
   /**
    * Output cells linked to detection events
@@ -292,16 +359,27 @@ export default class Game extends Vue {
    * @returns void
    */
   play() {
-    this.frameIndex = 0;
+    this.isSimulationRunning = true;
+    // this.frameIndex = 0;
+    const shouldTheSimulationKeepOnRunning = (this.frameIndex < this.simulation.frames.length - 1) && this.isSimulationRunning;
     this.playInterval = setInterval(() => {
-      if (this.frameIndex < this.simulation.frames.length - 1) {
+      // until there are frames and the game is not paused, add frames:
+      if ((this.frameIndex < this.simulation.frames.length - 1) && this.isSimulationRunning) {
         this.frameIndex += 1;
       } else {
+        // else stop
         this.$store.commit('SET_SIMULATION_STATE', false);
+        this.isSimulationRunning = false;
         clearInterval(this.playInterval);
       }
     }, 200);
     this.$store.commit('SET_SIMULATION_STATE', true);
+  }
+
+  pause() {
+    this.$store.commit('SET_SIMULATION_STATE', false);
+    this.$store.commit('PAUSE', false);
+    this.isSimulationRunning = false
   }
 
   /**
@@ -399,6 +477,7 @@ export default class Game extends Vue {
     });
     this.saveLevelToStore();
     this.updateSimulation();
+    this.computeGameState();
   }
 
   saveLevelToStore() {
